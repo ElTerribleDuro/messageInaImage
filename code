@@ -1,0 +1,193 @@
+package cryptography
+
+import java.awt.Color
+import java.awt.image.BufferedImage
+import java.io.File
+import javax.imageio.ImageIO
+import kotlin.system.exitProcess
+
+fun main() {
+    var input: String
+    do {
+        println("Task (hide, show, exit):")
+        input = readln()
+        when (input) {
+            "hide" -> hide()
+            "show" -> show()
+            else -> println("Wrong task: $input")
+        }
+    } while (input != "exit")
+    println("Bye!")
+    exitProcess(0)
+
+
+}
+fun hide(){
+    try {
+        println("Input image file:")
+        val inputFile = readln()
+        val inputFileImage = File(inputFile)
+        println("Output image file:")
+        val outputFile = readln()
+        val outputFileImage = File(outputFile)
+        val inputImage: BufferedImage = ImageIO.read(inputFileImage)
+        val outputImage = BufferedImage(inputImage.width, inputImage.height,BufferedImage.TYPE_INT_RGB)
+        println("Message to hide:")
+
+        val message = readln()
+        val messageBytes = message.encodeToByteArray()
+
+
+
+        println("Password:")
+        val password = readln()
+        val passwordBytes = password.encodeToByteArray()
+        val messageEncodedBytes = encryptXor(messageBytes, passwordBytes)
+        val messageEncodedBytesWithFinalizer = addFinalizer(messageEncodedBytes)
+        val messageInBits = bitsInArray(messageEncodedBytesWithFinalizer)
+
+        if ((messageBytes.size + 3) * 8 > inputImage.width * inputImage.height) {
+            println("The input image is not large enough to hold this message.")
+            return
+        }
+
+        // ENCODING
+        for (y in 0 until inputImage.height) {
+            for (x in 0 until inputImage.width) {
+                val inputColor = Color(inputImage.getRGB(x,y))
+                val color = Color(
+                    inputColor.red,
+                    inputColor.green,
+                    if((y * inputImage.width) + x in messageInBits.indices) {
+                        when {
+                            messageInBits[(y * inputImage.width) + x].toInt() == 0 -> inputColor.blue and 254
+                            else -> inputColor.blue or 1
+                        }
+                    } else {
+                        inputColor.blue
+                    }
+                )
+                outputImage.setRGB(x,y, color.rgb)
+            }
+        }
+        ImageIO.write(outputImage, outputFileImage.extension, outputFileImage )
+        println("Message saved in $outputFile image.")
+    }
+    catch (e: Exception) {
+        println("Can't read input file!")
+    }
+}
+
+
+fun show() {
+    println("Input image file:")
+    val inputFile = readln()
+    val inputFileImage = File(inputFile)
+    val inputImage: BufferedImage = ImageIO.read(inputFileImage)
+
+    println("Password:")
+    val password = readln()
+    val passwordBytes = password.encodeToByteArray()
+
+    val bitList = mutableListOf<Byte>()
+
+    for (y in 0 until inputImage.height) {
+        for (x in 0 until inputImage.width) {
+            val inputColor = Color(inputImage.getRGB(x,y))
+            bitList.add(
+                if (inputColor.blue % 2 == 0) 0 else 1
+            )
+        }
+    }
+    val bitArray = bitList.toByteArray()
+    val messageInBytes = bitsToByte(bitArray)
+    val messageInBytesWFin = getRidFinalizer(messageInBytes)
+    val desEncryptMessage = encryptXor(messageInBytesWFin, passwordBytes)
+    val finalMessage = desEncryptMessage.toString(Charsets.UTF_8)
+    println("Message:")
+    println(finalMessage)
+}
+
+fun encryptXor(array: ByteArray, passArray: ByteArray): ByteArray {
+    val newArray = ByteArray(array.size)
+    for (x in newArray.indices) {
+        newArray[x] = (array[x].toUInt() xor passArray[repeatIndex(x,passArray.size)].toUInt()).toByte()
+    }
+    return newArray
+}
+
+fun repeatIndex(index: Int, length: Int): Int {
+    return index - length * (index / length)
+}
+
+fun bitsInArray(array: ByteArray): ByteArray {
+    val newArray = ByteArray(array.size * 8)
+    for (y in array.indices) {
+        for (x in 0 until 8) {
+            newArray[x + y * 8] = byteToBits(array[y])[x]
+        }
+    }
+    return newArray
+}
+
+fun byteToBits(num: Byte): ByteArray {
+    var temp = num.toString(2)
+    val byteArray = ByteArray(8)
+    val dif = 8 - temp.length
+    var zeros = ""
+    repeat(dif) {
+        zeros += "0"
+    }
+    temp = zeros + temp
+    for(i in 0 until 8) {
+        byteArray[i] = temp.substring(i, i + 1).toByte()
+    }
+    return byteArray
+}
+
+fun addFinalizer(array: ByteArray): ByteArray {
+    val newArray = ByteArray(array.size + 3)
+    for(i in array.indices) {
+        newArray[i] = array[i]
+    }
+    newArray[newArray.lastIndex - 2] = 0
+    newArray[newArray.lastIndex - 1] = 0
+    newArray[newArray.lastIndex] = 3
+    return newArray
+}
+
+fun bitsToByte(bits: ByteArray): ByteArray {
+    var temp = ""
+    val byteArray = ByteArray(bits.size / 8)
+    var byteCounter = 0
+    for (x in bits.indices) {
+        temp += bits[x].toString()
+        if((x + 1) % 8 == 0 ) {
+            byteArray[byteCounter] = temp.toInt(2).toByte()
+            temp = ""
+            byteCounter++
+        }
+    }
+    return byteArray
+}
+
+fun getRidFinalizer(array: ByteArray): ByteArray {
+    val byteList = mutableListOf<Byte>()
+    var firstZero = false
+    var secondZero = false
+    for (elem in array) {
+        byteList.add(elem)
+        when {
+            elem.toInt() == 0 && !firstZero -> firstZero = true
+            elem.toInt() == 0 && firstZero && !secondZero -> secondZero = true
+            elem.toInt() == 3 && firstZero && secondZero -> break
+            else -> {
+                firstZero = false
+                secondZero = false
+            }
+        }
+    }
+    byteList.removeLast()
+    byteList.removeLast()
+    return byteList.toByteArray()
+}
